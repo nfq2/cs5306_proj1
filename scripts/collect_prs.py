@@ -230,20 +230,21 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default="microsoft/vscode")
     parser.add_argument("--start", type=date.fromisoformat, default=date(2020, 1, 1))
-    parser.add_argument("--end", type=date.fromisoformat, default=date(2024, 12, 31))
+    parser.add_argument("--end", type=date.fromisoformat, default=date(2026, 9, 25),
+                        help="Inclusive merge-date cutoff (default: 2026-09-25; partial year)")
     parser.add_argument("--every", type=int, default=50)
     parser.add_argument("--seed", type=int, default=42)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--limit", type=int, help="Collect first N systematic sample entries; still indexes full range")
     mode.add_argument("--pilot", type=int, help="Fetch up to N PRs (1–100) in the first 31 days; no full indexing")
-    parser.add_argument("--output", type=Path, help="Default: data/prs.csv, or data/prs_pilot.csv for --pilot")
+    parser.add_argument("--output", type=Path, help="Default: data/prs_2020_2026.csv, or data/prs_pilot_2020_2026.csv for --pilot")
     args = parser.parse_args()
     if args.start > args.end or args.every < 1 or (args.limit is not None and args.limit < 1):
         parser.error("Dates must be ordered; --every and --limit must be positive.")
     if args.pilot is not None and not 1 <= args.pilot <= 100:
         parser.error("--pilot must be between 1 and 100.")
     if args.output is None:
-        args.output = ROOT / "data" / ("prs_pilot.csv" if args.pilot else "prs.csv")
+        args.output = ROOT / "data" / ("prs_pilot_2020_2026.csv" if args.pilot else "prs_2020_2026.csv")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
         parser.error("--repo must be owner/repository")
     config = dict(repo=args.repo, start=str(args.start), end=str(args.end),
