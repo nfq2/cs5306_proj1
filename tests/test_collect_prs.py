@@ -4,10 +4,60 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.collect_prs import discover, pilot_sample, review_metrics, select_sample, write_csv
+from scripts.collect_prs import (discover, discover_with_previous, pilot_sample, review_metrics,
+                                 select_sample, select_yearly_sample, write_csv, save_json)
 
 
 class CollectorTests(unittest.TestCase):
+    def test_yearly_sampling_is_balanced_unique_and_reproducible(self):
+        items = [{"number": year * 1000 + n, "merged_at": f"{year}-06-01T00:00:00Z"}
+                 for year in (2020, 2021) for n in range(300)]
+        args = 200, 42, date(2020, 1, 1), date(2021, 12, 31)
+        sample, strata = select_yearly_sample(items, *args)
+        self.assertEqual(len(sample), 400)
+        self.assertEqual(len({p["number"] for p in sample}), 400)
+        self.assertEqual([s["sampled_count"] for s in strata], [200, 200])
+        self.assertEqual([s["design_weight"] for s in strata], [1.5, 1.5])
+        self.assertEqual(select_yearly_sample(list(reversed(items)) + items[:1], *args), (sample, strata))
+        self.assertNotEqual(select_yearly_sample(items, 200, 43, args[2], args[3])[0], sample)
+        only_2021, _ = select_yearly_sample(items[300:], 200, 42, date(2021, 1, 1), args[3])
+        self.assertEqual(only_2021, sample[200:])
+
+    def test_yearly_sampling_handles_small_empty_and_partial_years(self):
+        items = [{"number": 1, "merged_at": "2015-12-31T23:59:59Z"},
+                 {"number": 2, "merged_at": "2017-09-25T23:59:59Z"}]
+        sample, strata = select_yearly_sample(items, 200, 42, date(2015, 1, 1), date(2017, 9, 25))
+        self.assertEqual(sample, items)
+        self.assertEqual([s["sampled_count"] for s in strata], [1, 0, 1])
+        self.assertEqual(strata[0]["design_weight"], 1)
+        self.assertIsNone(strata[1]["design_weight"])
+        self.assertEqual(strata[2]["end"], "2017-09-25")
+        with self.assertRaises(ValueError):
+            select_yearly_sample(items, 200, 42, date(2015, 1, 1), date(2017, 9, 24))
+
+    def test_reuses_full_population_not_old_sample(self):
+        import hashlib
+        import json
+        from unittest.mock import Mock, patch
+        config = dict(repo="owner/repo", start="2020-01-01", end="2020-12-31")
+        fingerprint = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:16]
+        population = [{"number": n, "merged_at": "2020-06-01T00:00:00Z"} for n in (1, 2)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "old.sample.json"
+            save_json(source, dict(config=config, eligible_count=2, sample=population[:1]))
+            save_json(root / ".pr_cache" / fingerprint / "search_2020-01-01_2020-12-31.json", population)
+            api = Mock()
+            with patch("scripts.collect_prs.discover", return_value=[]) as fetch:
+                result = discover_with_previous(api, "owner/repo", date(2015, 1, 1),
+                                                date(2020, 12, 31), root / "new", source)
+                self.assertEqual(result, population)
+                fetch.assert_called_once_with(api, "owner/repo", date(2015, 1, 1),
+                                              date(2019, 12, 31), root / "new")
+            with self.assertRaises(ValueError):
+                discover_with_previous(api, "different/repo", date(2015, 1, 1),
+                                       date(2020, 12, 31), root / "new", source)
+
     def test_pilot_uses_one_small_search(self):
         from unittest.mock import Mock
         api = Mock()

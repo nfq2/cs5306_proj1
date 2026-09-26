@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect a reproducible systematic sample of merged GitHub PRs (stdlib only)."""
+"""Collect a reproducible sample of merged GitHub PRs (stdlib only)."""
 
 import argparse
 import csv
@@ -155,6 +155,60 @@ def select_sample(items, every, seed):
     return ordered[offset::every], offset + 1
 
 
+def select_yearly_sample(items, per_year, seed, start, end):
+    """Independent simple random samples without replacement within merge years."""
+    if per_year < 1:
+        raise ValueError("per_year must be positive")
+    unique = {}
+    for item in items:
+        merged_date = parse_time(item["merged_at"]).date()
+        if not start <= merged_date <= end:
+            raise ValueError("Population includes a PR outside the requested dates")
+        if item["number"] in unique and unique[item["number"]] != item:
+            raise ValueError("Conflicting population entries for the same PR")
+        unique[item["number"]] = item
+    sample, strata = [], []
+    for year in range(start.year, end.year + 1):
+        population = sorted((p for p in unique.values() if parse_time(p["merged_at"]).year == year),
+                            key=lambda p: (parse_time(p["merged_at"]), p["number"]))
+        n = min(per_year, len(population))
+        # A separate deterministic generator keeps a year's sample unchanged if
+        # other years are added or removed from the study.
+        selected = random.Random(f"{seed}:{year}").sample(population, n)
+        sample.extend(sorted(selected, key=lambda p: (parse_time(p["merged_at"]), p["number"])))
+        strata.append(dict(year=year, start=str(max(start, date(year, 1, 1))),
+                           end=str(min(end, date(year, 12, 31))),
+                           eligible_count=len(population), sampled_count=n,
+                           inclusion_probability=n / len(population) if population else None,
+                           design_weight=len(population) / n if n else None))
+    return sample, strata
+
+
+def discover_with_previous(api, repo, start, end, cache, source):
+    """Reuse a complete population index, never the previous selected sample."""
+    previous = json.loads(source.read_text())
+    config = previous["config"]
+    if config["repo"] != repo or "eligible_count" not in previous:
+        raise ValueError("Population source must be a full index for the same repository")
+    old_start, old_end = date.fromisoformat(config["start"]), date.fromisoformat(config["end"])
+    if not start <= old_start <= old_end <= end:
+        raise ValueError("Population source date range must be inside the requested range")
+    fingerprint = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:16]
+    path = source.parent / ".pr_cache" / fingerprint / f"search_{old_start}_{old_end}.json"
+    items = json.loads(path.read_text())
+    if (len(items) != previous["eligible_count"] or
+            len({p["number"] for p in items}) != len(items) or
+            any(not old_start <= parse_time(p["merged_at"]).date() <= old_end for p in items)):
+        raise ValueError("Population source index failed completeness validation")
+    print(f"Reusing {len(items)} indexed PRs from {old_start} through {old_end}", flush=True)
+    if start < old_start:
+        items = discover(api, repo, start, old_start - timedelta(days=1), cache) + items
+    if end > old_end:
+        items += discover(api, repo, old_end + timedelta(days=1), end, cache)
+    save_json(cache / f"search_{start}_{end}.json", items)
+    return items
+
+
 def pilot_sample(api, repo, start, end, count):
     """One search request in the first 31 days; this is a convenience sample."""
     pilot_end = min(end, start + timedelta(days=30))
@@ -229,26 +283,38 @@ def write_csv(path, rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default="microsoft/vscode")
-    parser.add_argument("--start", type=date.fromisoformat, default=date(2020, 1, 1))
+    parser.add_argument("--start", type=date.fromisoformat, default=date(2017, 1, 1))
     parser.add_argument("--end", type=date.fromisoformat, default=date(2026, 9, 25),
                         help="Inclusive merge-date cutoff (default: 2026-09-25; partial year)")
-    parser.add_argument("--every", type=int, default=50)
+    sampling = parser.add_mutually_exclusive_group()
+    sampling.add_argument("--every", type=int, help="Legacy systematic sampling interval")
+    sampling.add_argument("--per-year", type=int, help="Random sample per merge year (default: 200)")
+    parser.add_argument("--population-from", type=Path,
+                        help="Previous sample manifest whose full population cache can be reused")
     parser.add_argument("--seed", type=int, default=42)
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--limit", type=int, help="Collect first N systematic sample entries; still indexes full range")
+    mode.add_argument("--limit", type=int, help="Collect first N selected entries; still indexes full range")
     mode.add_argument("--pilot", type=int, help="Fetch up to N PRs (1–100) in the first 31 days; no full indexing")
-    parser.add_argument("--output", type=Path, help="Default: data/prs_2020_2026.csv, or data/prs_pilot_2020_2026.csv for --pilot")
+    parser.add_argument("--output", type=Path, help="Default filename includes date years and sampling mode")
     args = parser.parse_args()
-    if args.start > args.end or args.every < 1 or (args.limit is not None and args.limit < 1):
-        parser.error("Dates must be ordered; --every and --limit must be positive.")
+    if args.every is None and args.per_year is None:
+        args.per_year = 200
+    if args.start > args.end or any(value is not None and value < 1
+                                   for value in (args.every, args.per_year, args.limit)):
+        parser.error("Dates must be ordered; --every, --per-year and --limit must be positive.")
     if args.pilot is not None and not 1 <= args.pilot <= 100:
         parser.error("--pilot must be between 1 and 100.")
     if args.output is None:
-        args.output = ROOT / "data" / ("prs_pilot_2020_2026.csv" if args.pilot else "prs_2020_2026.csv")
+        suffix = "_pilot" if args.pilot else (f"_yearly_{args.per_year}" if args.per_year else "")
+        args.output = ROOT / "data" / f"prs_{args.start.year}_{args.end.year}{suffix}.csv"
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
         parser.error("--repo must be owner/repository")
     config = dict(repo=args.repo, start=str(args.start), end=str(args.end),
-                  every=args.every, seed=args.seed, schema_version=1)
+                  seed=args.seed, schema_version=1)
+    if args.per_year and not args.pilot:
+        config.update(mode="stratified_yearly", per_year=args.per_year)
+    else:
+        config.update(every=args.every or 50)
     if args.pilot:
         config.update(mode="pilot", pilot_count=args.pilot)
     fingerprint = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:16]
@@ -266,13 +332,32 @@ def main():
             sample = pilot_sample(api, args.repo, args.start, args.end, args.pilot)
             manifest = dict(config=config, indexed_at=timestamp(), sample=sample)
         else:
-            items = discover(api, args.repo, args.start, args.end, cache)
-            sample, start_position = select_sample(items, args.every, args.seed)
-            manifest = dict(config=config, indexed_at=timestamp(), eligible_count=len(items),
-                            start_position=start_position, sample=sample)
+            if args.population_from:
+                items = discover_with_previous(api, args.repo, args.start, args.end, cache,
+                                               args.population_from)
+            else:
+                items = discover(api, args.repo, args.start, args.end, cache)
+            if args.per_year:
+                sample, strata = select_yearly_sample(items, args.per_year, args.seed, args.start, args.end)
+                manifest = dict(config=config, indexed_at=timestamp(), eligible_count=len(items),
+                                strata=strata, sample=sample)
+            else:
+                sample, start_position = select_sample(items, args.every, args.seed)
+                manifest = dict(config=config, indexed_at=timestamp(), eligible_count=len(items),
+                                start_position=start_position, sample=sample)
+            if args.population_from:
+                previous = json.loads(args.population_from.read_text())
+                manifest["population_source"] = dict(manifest=str(args.population_from.resolve()),
+                                                      indexed_at=previous["indexed_at"],
+                                                      config=previous["config"])
         save_json(manifest_path, manifest)
     if args.pilot:
         print(f"Pilot: {len(manifest['sample'])} PRs", flush=True)
+    elif args.per_year:
+        print(f"Eligible: {manifest['eligible_count']}; sampled: {len(manifest['sample'])}", flush=True)
+        for stratum in manifest["strata"]:
+            print(f"{stratum['year']}: {stratum['sampled_count']} sampled / "
+                  f"{stratum['eligible_count']} eligible", flush=True)
     else:
         print(f"Eligible: {manifest['eligible_count']}; sampled: {len(manifest['sample'])}; "
               f"starting position: {manifest['start_position']}", flush=True)
