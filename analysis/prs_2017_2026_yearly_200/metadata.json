@@ -1,0 +1,30 @@
+{
+  "input": "/Users/clairewang/cs5306_proj1/data/prs_2017_2026_yearly_200.csv",
+  "input_sha256": "8827e825abf971cf9f2eee4dd7ec4ef65c1a9ac5cce6360e6de37c9d1b663df0",
+  "repo": "microsoft/vscode",
+  "study_start": "2017-01-01",
+  "study_end": "2026-09-25",
+  "partial_years": [
+    2026
+  ],
+  "source_n": 2000,
+  "analyzed_n": 2000,
+  "excluded_n": 0,
+  "manifest_verified": false,
+  "warnings": [
+    "All summaries are unweighted descriptions of sampled merged PRs, not population totals or causal effects.",
+    "Sampling manifest absent: selection/completeness and population weights cannot be verified.",
+    "User accounts are not proof of human-only work; reviewer account types and AI use are unavailable.",
+    "Review events are not revision rounds; profile labels do not establish the order of events.",
+    "Associations and change-size fields are recorded at collection, not verified historical covariates.",
+    "Repeated authors and a single repository limit generalization; no independence-based significance tests are reported."
+  ],
+  "matched_calendar_window": [
+    "01-01",
+    "09-25"
+  ],
+  "estimand": "Unweighted sampled merged PRs; pooled summaries reflect the sample's year mix",
+  "quantiles": "Linear interpolation at (n-1)*p",
+  "minimum_descriptive_group_n": 30,
+  "sparse_change_request_threshold": 10
+}

@@ -1,0 +1,53 @@
+{
+  "size_band": {
+    "zero": "0 changed lines",
+    "xs": "1–10 changed lines",
+    "small": "11–50 changed lines",
+    "medium": "51–200 changed lines",
+    "large": "201–1,000 changed lines",
+    "xl": "1,001+ changed lines"
+  },
+  "author_kind": {
+    "user": "User account",
+    "bot": "Bot account",
+    "other_unknown": "Other / unknown account"
+  },
+  "association_group": {
+    "member_owner_collaborator": "Member / owner / collaborator",
+    "contributor_first_time": "Contributor / first-time contributor",
+    "none": "No recorded association",
+    "other_unknown": "Other / unknown association"
+  },
+  "review_profile": {
+    "no_submitted_review": "No submitted review",
+    "review_without_decision": "Review(s), no approval or change request",
+    "approval_without_change_request": "Approval(s), no change request",
+    "change_request_without_approval": "Change request(s), no approval",
+    "approval_and_change_request": "Both approval and change request"
+  },
+  "reviewer_band": {
+    "zero": "0 identifiable reviewers",
+    "one": "1 identifiable reviewer",
+    "two": "2 identifiable reviewers",
+    "three_plus": "3+ identifiable reviewers"
+  },
+  "merge_time_band": {
+    "under_hour": "Under 1 hour",
+    "hour_to_day": "1 hour to under 1 day",
+    "day_to_week": "1 to under 7 days",
+    "week_to_month": "7 to under 30 days",
+    "month_plus": "30+ days"
+  },
+  "file_band": {
+    "zero": "0 files",
+    "one": "1 file",
+    "two_to_five": "2–5 files",
+    "six_plus": "6+ files"
+  },
+  "commit_band": {
+    "zero": "0 commits",
+    "one": "1 commit",
+    "two_to_five": "2–5 commits",
+    "six_plus": "6+ commits"
+  }
+}

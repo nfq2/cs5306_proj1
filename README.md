@@ -11,8 +11,8 @@ If a year contains fewer than 200 eligible PRs, all are selected.
 
 We exclude 2015–2016 because GitHub introduced formal PR Reviews in September
 2016; 2017 is the first full calendar year after that introduction.
-See [STUDY_DESIGN.md](STUDY_DESIGN.md) for the rationale, sources, sampling weights,
-and interpretation limits. The earlier 2020–2026 systematic dataset is preserved.
+See [ANALYSIS_PLAN.md](ANALYSIS_PLAN.md) for analysis dimensions, label definitions,
+sampling weights and interpretation limits. The earlier 2020–2026 systematic dataset is preserved.
 
 ## Run
 
@@ -122,6 +122,24 @@ shares, mean change-request events per PR (including zeros), and median time to
 merge. Only successful rows are included. The charts label 2026 as a partial year;
 they describe trends and do not establish an effect of AI use. Change-request
 events are not distinct revision rounds.
+
+## Analysis and labels
+
+The recommended dimensions, outcome labels and interpretation limits are in
+[ANALYSIS_PLAN.md](ANALYSIS_PLAN.md). Generate validated, labeled PR data,
+yearly/subgroup tables, sensitivity checks and figures:
+
+```bash
+python3 scripts/analyze_prs.py
+python3 scripts/plot_analysis.py
+```
+
+Tables and a readable report go to `analysis/prs_2017_2026_yearly_200/`;
+new figures go to `graphs/prs_2017_2026_yearly_200/analysis/`.
+The analysis uses only the standard library; plotting requires matplotlib.
+The new pipeline works without the missing sample manifest and explicitly flags
+that sampling verification and population weights are unavailable. The original
+`plot_prs.py` command above still requires the manifest.
 
 ## Tests
 
